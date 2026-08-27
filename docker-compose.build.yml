@@ -1,0 +1,17 @@
+services:
+  roamline:
+    build: .
+    image: roamline:local
+    pull_policy: build
+    container_name: roamline-local
+    ports:
+      - "${ROAMLINE_PORT:-3030}:3001"
+    volumes:
+      - roamline-dev-data:/data
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      AUTH_DISABLED: "true"
+
+volumes:
+  roamline-dev-data:

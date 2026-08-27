@@ -1,0 +1,14 @@
+http:
+  routers:
+    roamline:
+      rule: Host(`roamline.chempner.ch`)
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: roamline
+  services:
+    roamline:
+      loadBalancer:
+        servers:
+          - url: http://10.13.37.11:3030

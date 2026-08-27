@@ -1,0 +1,8 @@
+.git
+.github
+.env*
+**/node_modules
+frontend/dist
+data
+ios
+*.md

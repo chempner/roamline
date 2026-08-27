@@ -1,0 +1,22 @@
+services:
+  roamline:
+    image: ghcr.io/chempner/roamline:latest
+    container_name: roamline
+    ports:
+      - "${ROAMLINE_PORT:-3030}:3001"
+    volumes:
+      - roamline-data:/data
+    restart: unless-stopped
+    init: true
+    labels:
+      - wud.watch=true
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to the shared AuthService secret}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://10.13.37.11:3100}
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+
+volumes:
+  roamline-data:
+    driver: local
