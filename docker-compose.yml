@@ -3,7 +3,7 @@ services:
     image: ghcr.io/chempner/roamline:latest
     container_name: roamline
     ports:
-      - "${ROAMLINE_PORT:-3030}:3001"
+      - "${ROAMLINE_PORT:-5026}:3001"
     volumes:
       - roamline-data:/data
     restart: unless-stopped

@@ -5,10 +5,10 @@ http:
       entryPoints:
         - websecure
       tls:
-        certResolver: letsencrypt
+        certResolver: production
       service: roamline
   services:
     roamline:
       loadBalancer:
         servers:
-          - url: http://10.13.37.11:3030
+          - url: http://10.13.37.11:5026

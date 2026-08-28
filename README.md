@@ -59,7 +59,7 @@ Run the production image locally without AuthService:
 docker compose -f docker-compose.build.yml up --build
 ```
 
-Then open `http://localhost:3030`.
+Then open `http://localhost:5026`.
 
 ## AuthService integration
 
@@ -102,7 +102,7 @@ If the repository owner/name differs, update the `image:` value in both compose 
    ```dotenv
    JWT_SECRET=the-exact-secret-used-by-authservice
    AUTH_SERVICE_URL=http://10.13.37.11:3100
-   ROAMLINE_PORT=3030
+   ROAMLINE_PORT=5026
    ROAMLINE_DATA_PATH=/mnt/SSD/Apps/Roamline
    SECURE_COOKIES=true
    ```
@@ -116,7 +116,7 @@ If the repository owner/name differs, update the `image:` value in both compose 
 
 4. Copy `deploy/traefik/roamline.yml` into the Traefik dynamic configuration directory and adjust the hostname, certificate resolver, or TrueNAS IP if needed.
 
-The web app will be available on port `3030` and, with the included example, at `https://roamline.chempner.ch`. If you use the app directly over plain HTTP, set `SECURE_COOKIES=false`. Keep it `true` behind HTTPS.
+The web app will be available on port `5026` and, with the included example, at `https://roamline.chempner.ch`. If you use the app directly over plain HTTP, set `SECURE_COOKIES=false`. Keep it `true` behind HTTPS.
 
 ### Updating
 
