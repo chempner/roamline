@@ -90,12 +90,13 @@ If the repository owner/name differs, update the `image:` value in both compose 
 
 ## TrueNAS deployment
 
-1. Create the persistent dataset and make it writable by container UID/GID `1000`:
+1. Create the persistent dataset:
 
    ```bash
    mkdir -p /mnt/SSD/Apps/Roamline/uploads
-   chown -R 1000:1000 /mnt/SSD/Apps/Roamline
    ```
+
+   At startup, the container prepares this dedicated directory and then drops privileges to its non-root `node` user before launching the application. If a restrictive TrueNAS ACL blocks container root from changing ownership, grant Full Control on this dataset to UID/GID `1000`.
 
 2. Put `docker-compose.truenas.yml` and an `.env` file in the TrueNAS app directory. At minimum:
 
