@@ -99,7 +99,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					00E59FFF27B2DAC84F9C7FE4 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 7ABL2D4N2A;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -188,7 +188,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7ABL2D4N2A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -252,7 +252,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7ABL2D4N2A;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -293,7 +293,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ch.chempner.roamline;
 				PRODUCT_NAME = Roamline;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -316,7 +316,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ch.chempner.roamline;
 				PRODUCT_NAME = Roamline;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

@@ -9,6 +9,7 @@ struct RoamlineApp: App {
             RootView()
                 .environmentObject(state)
                 .tint(.roamCoral)
+                .preferredColorScheme(.light)
         }
     }
 }

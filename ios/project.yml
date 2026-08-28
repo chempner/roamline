@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: 7ABL2D4N2A
 targets:
   Roamline:
     type: application
@@ -16,6 +16,23 @@ targets:
       - path: Roamline
     info:
       path: Roamline/Info.plist
+      properties:
+        CFBundleDisplayName: Roamline
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        NSLocationAlwaysAndWhenInUseUsageDescription: Roamline uses your location in the background while you are actively tracking a journey.
+        NSLocationWhenInUseUsageDescription: Roamline uses your location to trace your journey and place moments on the map.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIBackgroundModes:
+          - location
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Light
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ch.chempner.roamline
@@ -23,6 +40,7 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: Roamline
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
