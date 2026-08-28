@@ -7,8 +7,26 @@ import UIKit
 extension Color {
     static let roamForest = Color(red: 22/255, green: 55/255, blue: 47/255)
     static let roamCoral = Color(red: 230/255, green: 101/255, blue: 70/255)
-    static let roamCream = Color(red: 245/255, green: 244/255, blue: 239/255)
-    static let roamMuted = Color(red: 111/255, green: 125/255, blue: 120/255)
+    static let roamCream = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 13/255, green: 22/255, blue: 19/255, alpha: 1)
+            : UIColor(red: 245/255, green: 244/255, blue: 239/255, alpha: 1)
+    })
+    static let roamSurface = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 24/255, green: 35/255, blue: 31/255, alpha: 1)
+            : .white
+    })
+    static let roamPrimary = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 238/255, green: 241/255, blue: 239/255, alpha: 1)
+            : UIColor(red: 22/255, green: 55/255, blue: 47/255, alpha: 1)
+    })
+    static let roamMuted = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 166/255, green: 181/255, blue: 175/255, alpha: 1)
+            : UIColor(red: 111/255, green: 125/255, blue: 120/255, alpha: 1)
+    })
 }
 
 private let displayDate: DateFormatter = {
@@ -36,16 +54,16 @@ struct RootView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        Group {
-            if state.isRestoring {
-                ZStack {
-                    Color.roamCream.ignoresSafeArea()
+        ZStack {
+            Color.roamCream.ignoresSafeArea()
+            Group {
+                if state.isRestoring {
                     ProgressView().controlSize(.large).tint(.roamCoral)
+                } else if state.isSignedIn {
+                    MainTabView()
+                } else {
+                    LoginView()
                 }
-            } else if state.isSignedIn {
-                MainTabView()
-            } else {
-                LoginView()
             }
         }
         .alert("Something went wrong", isPresented: Binding(
@@ -104,7 +122,7 @@ struct LoginView: View {
                         LoginField(title: "Server URL", text: $server, contentType: .URL, capitalization: .never)
                     }
                     .padding(20)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 24))
+                    .background(Color.roamSurface, in: RoundedRectangle(cornerRadius: 24))
                     .shadow(color: Color.black.opacity(0.14), radius: 30, y: 16)
                     .padding(.top, 35)
 
@@ -158,20 +176,23 @@ struct LoginField: View {
             }
             .padding(.horizontal, 14).frame(height: 48)
             .background(Color.roamCream, in: RoundedRectangle(cornerRadius: 12))
-            .foregroundStyle(Color.roamForest)
+            .foregroundStyle(Color.roamPrimary)
         }
     }
 }
 
 struct MainTabView: View {
     var body: some View {
-        TabView {
-            NavigationStack { JourneyListView() }
-                .tabItem { Label("Journeys", systemImage: "map") }
-            NavigationStack { TrackingView() }
-                .tabItem { Label("Tracking", systemImage: "location.fill") }
-            NavigationStack { SettingsView() }
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+        ZStack {
+            Color.roamCream.ignoresSafeArea()
+            TabView {
+                NavigationStack { JourneyListView() }
+                    .tabItem { Label("Journeys", systemImage: "map") }
+                NavigationStack { TrackingView() }
+                    .tabItem { Label("Tracking", systemImage: "location.fill") }
+                NavigationStack { SettingsView() }
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+            }
         }
     }
 }
@@ -230,7 +251,7 @@ struct JourneySummary: View {
             Divider().frame(height: 30)
             SummaryValue(value: "\(moments)", label: "moments")
         }
-        .padding(.vertical, 17).background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 18))
+        .padding(.vertical, 17).background(Color.roamSurface.opacity(0.9), in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -238,7 +259,7 @@ struct SummaryValue: View {
     let value: String
     let label: String
     var body: some View {
-        VStack(spacing: 3) { Text(value).font(.headline).foregroundStyle(Color.roamForest); Text(label).font(.caption2).foregroundStyle(Color.roamMuted) }
+        VStack(spacing: 3) { Text(value).font(.headline).foregroundStyle(Color.roamPrimary); Text(label).font(.caption2).foregroundStyle(Color.roamMuted) }
             .frame(maxWidth: .infinity)
     }
 }
@@ -253,7 +274,7 @@ struct JourneyCard: View {
                 Image(systemName: isTracking ? "location.fill" : "map.fill").foregroundStyle(Color.roamCoral)
             }.frame(width: 54, height: 54)
             VStack(alignment: .leading, spacing: 5) {
-                HStack { Text(trip.title).font(.headline).foregroundStyle(Color.roamForest).lineLimit(1); if isTracking { LiveDot() } }
+                HStack { Text(trip.title).font(.headline).foregroundStyle(Color.roamPrimary).lineLimit(1); if isTracking { LiveDot() } }
                 Text(tripDateText(trip)).font(.caption).foregroundStyle(Color.roamMuted)
                 Text("\(trip.distanceKm.formatted(.number.precision(.fractionLength(0...1)))) km  ·  \(trip.momentCount) moments")
                     .font(.caption2).foregroundStyle(Color.roamMuted)
@@ -261,7 +282,7 @@ struct JourneyCard: View {
             Spacer()
             Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(Color.roamMuted.opacity(0.7))
         }
-        .padding(15).background(.white, in: RoundedRectangle(cornerRadius: 19))
+        .padding(15).background(Color.roamSurface, in: RoundedRectangle(cornerRadius: 19))
     }
 }
 
@@ -351,7 +372,7 @@ struct TripDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(shownTrip.status == "active" ? "ON THE ROAD" : shownTrip.status.uppercased())
                             .font(.caption2.bold()).tracking(1.2).foregroundStyle(Color.roamCoral)
-                        Text(shownTrip.title).font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(Color.roamForest)
+                        Text(shownTrip.title).font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(Color.roamPrimary)
                         if !shownTrip.summary.isEmpty { Text(shownTrip.summary).foregroundStyle(Color.roamMuted).lineSpacing(3) }
                         Label(tripDateText(shownTrip), systemImage: "calendar").font(.caption).foregroundStyle(Color.roamMuted)
                     }
@@ -378,7 +399,7 @@ struct TripDetailView: View {
                         .background(Color.roamCream, in: RoundedRectangle(cornerRadius: 18))
                     }
                 }
-                .padding(20).background(.white)
+                .padding(20).background(Color.roamSurface)
             }
         }
         .ignoresSafeArea(edges: .top)
@@ -529,7 +550,7 @@ struct TrackingView: View {
                         Divider().overlay(Color.white.opacity(0.09))
                         PermissionRow(icon: "arrow.triangle.2.circlepath", title: "Waiting to sync", value: "\(state.pendingPointCount) points")
                         Divider().overlay(Color.white.opacity(0.09))
-                        PermissionRow(icon: "battery.75percent", title: "GPS mode", value: "Balanced")
+                        GPSModeMenu(tracker: state.locationTracker)
                     }
                     .padding(18).background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 19))
 
@@ -569,8 +590,34 @@ struct PermissionRow: View {
     }
 }
 
+struct GPSModeMenu: View {
+    @ObservedObject var tracker: LocationTracker
+
+    var body: some View {
+        Menu {
+            ForEach(GPSMode.allCases) { mode in
+                Button { tracker.setGPSMode(mode) } label: {
+                    Label(mode.title, systemImage: tracker.gpsMode == mode ? "checkmark" : "circle")
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: "battery.75percent").frame(width: 26).foregroundStyle(Color.roamCoral)
+                Text("Battery mode").foregroundStyle(.white.opacity(0.8))
+                Spacer()
+                Text(tracker.gpsMode.title).foregroundStyle(.white.opacity(0.48))
+                Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.white.opacity(0.35))
+            }
+            .font(.subheadline)
+            .contentShape(Rectangle())
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
+    @AppStorage(AppAppearance.storageKey) private var appearanceValue = AppAppearance.system.rawValue
+
     var body: some View {
         List {
             Section {
@@ -581,6 +628,27 @@ struct SettingsView: View {
                         Text(state.user?.username ?? "").font(.caption).foregroundStyle(Color.roamMuted)
                     }
                 }.padding(.vertical, 5)
+            }
+            Section("Appearance") {
+                Picker("Color scheme", selection: $appearanceValue) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            Section("Tracking") {
+                Picker("Battery mode", selection: Binding(
+                    get: { state.locationTracker.gpsMode },
+                    set: { state.locationTracker.setGPSMode($0) }
+                )) {
+                    ForEach(GPSMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Text(state.locationTracker.gpsMode.detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.roamMuted)
             }
             Section("Server") {
                 LabeledContent("Address", value: state.serverURL).font(.caption)
