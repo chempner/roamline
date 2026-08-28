@@ -33,6 +33,9 @@ final class AppState: ObservableObject {
         locationTracker.onLocation = { [weak self] location in
             Task { await self?.capture(location) }
         }
+        locationTracker.onTrackingUnavailable = { [weak self] message in
+            self?.cancelTrackingAfterLocationFailure(message)
+        }
         Task { await restoreSession() }
     }
 
@@ -192,6 +195,12 @@ final class AppState: ObservableObject {
     private func handle(_ error: Error) {
         if let apiError = error as? APIError, case .unauthorized = apiError { signOutLocally() }
         else { errorMessage = error.localizedDescription }
+    }
+
+    private func cancelTrackingAfterLocationFailure(_ message: String) {
+        trackingTripID = nil
+        UserDefaults.standard.removeObject(forKey: Self.trackingTripKey)
+        errorMessage = message
     }
 
     private func signOutLocally() {

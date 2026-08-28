@@ -10,7 +10,14 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
     @Published private(set) var lastError: String?
 
     var onLocation: ((CLLocation) -> Void)?
+    var onTrackingUnavailable: ((String) -> Void)?
     private let manager = CLLocationManager()
+    private var wantsTracking = false
+
+    private var supportsBackgroundLocation: Bool {
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
+        return modes?.contains("location") == true
+    }
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -23,36 +30,25 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.showsBackgroundLocationIndicator = true
     }
 
-    func requestPermission() {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse:
-            manager.requestAlwaysAuthorization()
-        default:
-            break
-        }
-    }
-
     func start() {
-        requestPermission()
-        manager.allowsBackgroundLocationUpdates = true
-        manager.startUpdatingLocation()
-        isTracking = true
+        wantsTracking = true
         lastError = nil
+        continueStarting(for: manager.authorizationStatus)
     }
 
     func stop() {
+        wantsTracking = false
         manager.stopUpdatingLocation()
-        manager.allowsBackgroundLocationUpdates = false
+        if manager.allowsBackgroundLocationUpdates {
+            manager.allowsBackgroundLocationUpdates = false
+        }
         isTracking = false
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
-        if manager.authorizationStatus == .authorizedWhenInUse, isTracking {
-            manager.requestAlwaysAuthorization()
-        }
+        guard wantsTracking else { return }
+        continueStarting(for: manager.authorizationStatus)
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -65,6 +61,51 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         guard (error as? CLError)?.code != .locationUnknown else { return }
-        lastError = error.localizedDescription
+        failTracking(error.localizedDescription)
+    }
+
+    private func continueStarting(for status: CLAuthorizationStatus) {
+        authorizationStatus = status
+
+        switch status {
+        case .notDetermined:
+            isTracking = false
+            manager.requestWhenInUseAuthorization()
+
+        case .authorizedWhenInUse:
+            // Foreground updates are valid now. Background updates are enabled only
+            // after iOS grants Always access; enabling them sooner raises an
+            // Objective-C assertion that terminates the process.
+            if manager.allowsBackgroundLocationUpdates {
+                manager.allowsBackgroundLocationUpdates = false
+            }
+            manager.startUpdatingLocation()
+            isTracking = true
+            manager.requestAlwaysAuthorization()
+
+        case .authorizedAlways:
+            if supportsBackgroundLocation {
+                manager.allowsBackgroundLocationUpdates = true
+            }
+            manager.startUpdatingLocation()
+            isTracking = true
+
+        case .denied, .restricted:
+            failTracking("Location access is turned off. Enable Always Location access for Roamline in Settings to track a journey.")
+
+        @unknown default:
+            failTracking("Roamline could not start location tracking. Check its Location permission in Settings and try again.")
+        }
+    }
+
+    private func failTracking(_ message: String) {
+        wantsTracking = false
+        manager.stopUpdatingLocation()
+        if manager.allowsBackgroundLocationUpdates {
+            manager.allowsBackgroundLocationUpdates = false
+        }
+        isTracking = false
+        lastError = message
+        onTrackingUnavailable?(message)
     }
 }
