@@ -336,7 +336,8 @@ function createApp(options = {}) {
     res.json({ settings });
   });
 
-  const frontendDir = options.frontendDir || path.join(__dirname, '..', '..', 'frontend', 'dist');
+  const frontendDir = options.frontendDir || process.env.FRONTEND_DIR
+    || path.join(__dirname, '..', '..', 'frontend', 'dist');
   if (fs.existsSync(frontendDir)) {
     app.use(express.static(frontendDir, { maxAge: '1h', index: false }));
     app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(frontendDir, 'index.html')));

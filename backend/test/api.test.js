@@ -14,7 +14,10 @@ let dataDir;
 
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'roamline-test-'));
-  app = createApp({ dataDir });
+  const frontendDir = path.join(dataDir, 'frontend');
+  fs.mkdirSync(frontendDir);
+  fs.writeFileSync(path.join(frontendDir, 'index.html'), '<!doctype html><title>Roamline test UI</title>');
+  app = createApp({ dataDir, frontendDir });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
@@ -44,6 +47,12 @@ test('health endpoint is public', async () => {
   const { response, body } = await request('/api/health');
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
+});
+
+test('production frontend is served at the root path', async () => {
+  const response = await fetch(`${baseUrl}/`);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Roamline test UI/);
 });
 
 test('trip lifecycle, idempotent location sync, and user isolation', async () => {

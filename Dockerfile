@@ -7,7 +7,7 @@ RUN npm run build
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production DATA_DIR=/data PORT=3001
+ENV NODE_ENV=production DATA_DIR=/data FRONTEND_DIR=/app/frontend/dist PORT=3001
 
 COPY backend/package.json backend/package-lock.json ./
 RUN apk add --no-cache su-exec \
