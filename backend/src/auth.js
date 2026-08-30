@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'roamline';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_CACHE_MAX_ENTRIES = 1000;
 
 function isSecureRequest(req) {
   if (process.env.SECURE_COOKIES === 'true') return true;
@@ -28,6 +29,7 @@ function buildAuth() {
   async function checkCurrentSession(token, fallbackPayload) {
     const cached = sessionCache.get(token);
     if (cached && cached.expiresAt > Date.now()) return cached.user;
+    if (cached) sessionCache.delete(token);
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 3000);
@@ -38,8 +40,18 @@ function buildAuth() {
         signal: controller.signal,
       });
       clearTimeout(timer);
+      if (response.status >= 500) {
+        // A valid local JWT remains usable during a short AuthService outage.
+        console.warn(`[auth] Session check unavailable: HTTP ${response.status}`);
+        return fallbackPayload;
+      }
       if (!response.ok) return null;
       const data = await response.json();
+      if (sessionCache.size >= SESSION_CACHE_MAX_ENTRIES) {
+        for (const [key, entry] of sessionCache) {
+          if (entry.expiresAt <= Date.now()) sessionCache.delete(key);
+        }
+      }
       sessionCache.set(token, { user: data.user, expiresAt: Date.now() + 60_000 });
       return data.user;
     } catch (error) {

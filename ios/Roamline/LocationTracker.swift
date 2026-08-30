@@ -24,6 +24,13 @@ enum GPSMode: String, CaseIterable, Identifiable {
         case .highAccuracy: "Uses navigation-grade accuracy and continuous updates. This consumes noticeably more battery."
         }
     }
+
+    var horizontalAccuracyLimit: CLLocationDistance {
+        switch self {
+        case .batterySaver: 500
+        case .balanced, .highAccuracy: 150
+        }
+    }
 }
 
 @MainActor
@@ -38,11 +45,16 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
     var onTrackingUnavailable: ((String) -> Void)?
     private let manager = CLLocationManager()
     private var wantsTracking = false
+    private var isPausedBySystem = false
     private static let gpsModeKey = "roamline-gps-mode"
 
     private var supportsBackgroundLocation: Bool {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         return modes?.contains("location") == true
+    }
+
+    var backgroundCapable: Bool {
+        authorizationStatus == .authorizedAlways && supportsBackgroundLocation
     }
 
     override init() {
@@ -62,7 +74,9 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
 
     func stop() {
         wantsTracking = false
+        isPausedBySystem = false
         manager.stopUpdatingLocation()
+        manager.stopMonitoringSignificantLocationChanges()
         if manager.allowsBackgroundLocationUpdates {
             manager.allowsBackgroundLocationUpdates = false
         }
@@ -83,10 +97,28 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if isPausedBySystem {
+            isPausedBySystem = false
+            manager.stopMonitoringSignificantLocationChanges()
+            manager.startUpdatingLocation()
+        }
         guard isTracking else { return }
-        for location in locations where location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 150 {
+        for location in locations where location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= gpsMode.horizontalAccuracyLimit {
             currentLocation = location
             onLocation?(location)
+        }
+    }
+
+    func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        guard wantsTracking else { return }
+        // iOS never resumes automatically after an auto-pause. Low-power significant-change
+        // monitoring wakes the app once the device moves again so standard updates can restart,
+        // preserving the pause-when-stationary battery saving of the current GPS mode.
+        if CLLocationManager.significantLocationChangeMonitoringAvailable() {
+            isPausedBySystem = true
+            manager.startMonitoringSignificantLocationChanges()
+        } else {
+            manager.startUpdatingLocation()
         }
     }
 
@@ -131,7 +163,9 @@ final class LocationTracker: NSObject, ObservableObject, @preconcurrency CLLocat
 
     private func failTracking(_ message: String) {
         wantsTracking = false
+        isPausedBySystem = false
         manager.stopUpdatingLocation()
+        manager.stopMonitoringSignificantLocationChanges()
         if manager.allowsBackgroundLocationUpdates {
             manager.allowsBackgroundLocationUpdates = false
         }

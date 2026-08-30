@@ -26,7 +26,7 @@ function createDatabase(dataDir = process.env.DATA_DIR || '/data') {
     );
 
     CREATE TABLE IF NOT EXISTS location_points (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL,
       latitude REAL NOT NULL CHECK(latitude BETWEEN -90 AND 90),
@@ -36,7 +36,8 @@ function createDatabase(dataDir = process.env.DATA_DIR || '/data') {
       speed REAL,
       course REAL,
       recorded_at TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (trip_id, id)
     );
 
     CREATE TABLE IF NOT EXISTS moments (
@@ -77,6 +78,37 @@ function createDatabase(dataDir = process.env.DATA_DIR || '/data') {
     CREATE INDEX IF NOT EXISTS idx_moments_trip_time ON moments(trip_id, visited_at DESC);
     CREATE INDEX IF NOT EXISTS idx_photos_moment ON photos(moment_id, created_at);
   `);
+
+  // Older databases used a global id primary key on location_points, so identical
+  // client-supplied ids collided across trips. SQLite cannot alter a primary key,
+  // so rebuild the table with the composite (trip_id, id) key.
+  const pointKeyColumns = db.pragma('table_info(location_points)').filter((column) => column.pk > 0);
+  if (pointKeyColumns.length === 1) {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE location_points_migrated (
+        id TEXT NOT NULL,
+        trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        latitude REAL NOT NULL CHECK(latitude BETWEEN -90 AND 90),
+        longitude REAL NOT NULL CHECK(longitude BETWEEN -180 AND 180),
+        altitude REAL,
+        accuracy REAL,
+        speed REAL,
+        course REAL,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (trip_id, id)
+      );
+      INSERT INTO location_points_migrated
+        SELECT id,trip_id,user_id,latitude,longitude,altitude,accuracy,speed,course,recorded_at,created_at
+        FROM location_points;
+      DROP TABLE location_points;
+      ALTER TABLE location_points_migrated RENAME TO location_points;
+      CREATE INDEX IF NOT EXISTS idx_locations_trip_time ON location_points(trip_id, recorded_at);
+      COMMIT;
+    `);
+  }
 
   return db;
 }

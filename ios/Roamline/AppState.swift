@@ -19,6 +19,7 @@ final class AppState: ObservableObject {
     private let client: APIClient
     private var isSyncing = false
     private var token: String?
+    private var statusBeforeTracking: (tripID: String, status: String)?
 
     private static let defaultServer = "https://roamline.chempner.ch"
     private static let serverKey = "roamline-server-url"
@@ -63,6 +64,7 @@ final class AppState: ObservableObject {
         defer { isLoading = false }
         await client.configure(baseURL: url, token: nil)
         let response = try await client.login(username: username, password: password)
+        if response.mustChangePassword == true { throw APIError.passwordChangeRequired }
         guard let newToken = response.token else { throw APIError.invalidResponse }
         token = newToken
         KeychainStore.save(newToken)
@@ -98,11 +100,10 @@ final class AppState: ObservableObject {
     }
 
     func createTrip(title: String, summary: String, startDate: Date, endDate: Date?) async throws {
-        let formatter = ISO8601DateFormatter()
         let request = CreateTripRequest(
             title: title, summary: summary,
-            startDate: formatter.string(from: startDate),
-            endDate: endDate.map { formatter.string(from: $0) }, status: "planned"
+            startDate: Self.utcMidnightString(for: startDate),
+            endDate: endDate.map { Self.utcMidnightString(for: $0) }, status: "planned"
         )
         let trip = try await client.createTrip(request)
         trips.insert(trip, at: 0)
@@ -111,12 +112,16 @@ final class AppState: ObservableObject {
 
     func startTracking(trip: Trip) async {
         do {
+            statusBeforeTracking = (trip.id, trip.status)
             _ = try await client.setTripStatus(id: trip.id, status: "active")
             trackingTripID = trip.id
             UserDefaults.standard.set(trip.id, forKey: Self.trackingTripKey)
             locationTracker.start()
             await loadTrips()
-        } catch { handle(error) }
+        } catch {
+            statusBeforeTracking = nil
+            handle(error)
+        }
     }
 
     func addMoment(to trip: Trip, title: String, story: String, place: String, date: Date, photoData: Data?) async throws {
@@ -138,6 +143,7 @@ final class AppState: ObservableObject {
         let tripID = trackingTripID
         locationTracker.stop()
         trackingTripID = nil
+        statusBeforeTracking = nil
         UserDefaults.standard.removeObject(forKey: Self.trackingTripKey)
         Task {
             await flushPending()
@@ -151,26 +157,38 @@ final class AppState: ObservableObject {
 
     func flushPending() async {
         guard !isSyncing, token != nil else { return }
-        let batch = await pointStore.nextBatch()
-        guard !batch.isEmpty, let tripID = batch.first?.tripId else {
-            pendingPointCount = await pointStore.count()
-            return
-        }
         isSyncing = true
         defer { isSyncing = false }
-        do {
-            _ = try await client.upload(tripId: tripID, points: batch)
-            await pointStore.remove(ids: Set(batch.map(\.id)))
+        // Only the signed-in account's points (plus legacy untagged ones) are flushed, so a 404
+        // for another user's trip can never delete that user's undelivered points.
+        let owner = user?.username
+        while true {
+            // An account switch mid-flush would upload (and 404-drop) the previous user's points
+            // with the new user's token, so bail as soon as the session no longer matches.
+            guard user?.username == owner, token != nil else { break }
+            let batch = await pointStore.nextBatch(owner: owner)
+            guard !batch.isEmpty, let tripID = batch.first?.tripId else { break }
+            do {
+                _ = try await client.upload(tripId: tripID, points: batch)
+                await pointStore.remove(ids: Set(batch.map(\.id)))
+            } catch APIError.server(let status, _) where status == 404 {
+                // The trip no longer exists server-side, so its queued points can never be delivered.
+                // Unless the session changed while the upload was in flight — then the 404 only
+                // reflects the new account's ownership, and the points must survive.
+                guard user?.username == owner else { break }
+                await pointStore.removeAll(tripId: tripID, owner: owner)
+            } catch {
+                // Transient failure: offline data is intentionally retained; the next foreground/location event retries it.
+                break
+            }
             pendingPointCount = await pointStore.count()
-            if pendingPointCount > 0 { await flushPending() }
-        } catch {
-            pendingPointCount = await pointStore.count()
-            // Offline data is intentionally retained; the next foreground/location event retries it.
         }
+        pendingPointCount = await pointStore.count()
     }
 
     private func capture(_ location: CLLocation) async {
         guard let tripID = trackingTripID else { return }
+        statusBeforeTracking = nil
         let point = PendingLocation(
             id: UUID().uuidString.lowercased(), tripId: tripID,
             latitude: location.coordinate.latitude, longitude: location.coordinate.longitude,
@@ -178,11 +196,27 @@ final class AppState: ObservableObject {
             accuracy: location.horizontalAccuracy,
             speed: location.speed >= 0 ? location.speed : nil,
             course: location.course >= 0 ? location.course : nil,
-            recordedAt: ISO8601DateFormatter().string(from: location.timestamp)
+            recordedAt: ISO8601DateFormatter().string(from: location.timestamp),
+            owner: user?.username
         )
         await pointStore.append(point)
         pendingPointCount = await pointStore.count()
         if pendingPointCount >= 5 { await flushPending() }
+    }
+
+    // Trip start/end dates are calendar days, stored server-side as UTC midnight (the web client
+    // sends date-only strings). Strip the time component in the user's calendar and encode the
+    // matching UTC-midnight instant so both clients agree on the calendar date.
+    private static func utcMidnightString(for date: Date) -> String {
+        // Components must come from a Gregorian calendar (in the user's timezone): Calendar.current
+        // honors the device's preferred calendar, and a Buddhist/Japanese year fed into the
+        // Gregorian reconstruction below would land centuries off.
+        var localGregorian = Calendar(identifier: .gregorian)
+        localGregorian.timeZone = TimeZone.current
+        let components = localGregorian.dateComponents([.year, .month, .day], from: date)
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        return ISO8601DateFormatter().string(from: utcCalendar.date(from: components) ?? date)
     }
 
     private func normalizedServer(_ value: String) -> URL? {
@@ -198,13 +232,25 @@ final class AppState: ObservableObject {
     }
 
     private func cancelTrackingAfterLocationFailure(_ message: String) {
+        let failedTripID = trackingTripID
         trackingTripID = nil
         UserDefaults.standard.removeObject(forKey: Self.trackingTripKey)
         errorMessage = message
+        if let previous = statusBeforeTracking, previous.tripID == failedTripID, previous.status != "active" {
+            statusBeforeTracking = nil
+            Task {
+                // Best effort: the trip should not stay "active" when tracking never started.
+                _ = try? await client.setTripStatus(id: previous.tripID, status: previous.status)
+                await loadTrips()
+            }
+        }
     }
 
     private func signOutLocally() {
         locationTracker.stop()
+        trackingTripID = nil
+        statusBeforeTracking = nil
+        UserDefaults.standard.removeObject(forKey: Self.trackingTripKey)
         token = nil
         user = nil
         trips = []

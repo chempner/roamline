@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, CalendarDays, Check, ChevronRight, CircleStop, Compass, Download,
   Footprints, Globe2, LoaderCircle, LogOut, Map, MapPin, Menu, Navigation,
@@ -8,7 +8,7 @@ import { api } from './api';
 import { MapView } from './components/MapView';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const shortDate = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const shortDate = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 function formatDate(value, short = false) {
   if (!value) return 'Open date';
@@ -90,7 +90,7 @@ function Modal({ title, subtitle, onClose, children }) {
 }
 
 function TripForm({ onClose, onSave }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const [form, setForm] = useState({ title: '', summary: '', start_date: today, end_date: '', status: 'planned' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -115,16 +115,18 @@ function TripForm({ onClose, onSave }) {
 }
 
 function MomentForm({ trip, onClose, onSave }) {
-  const now = new Date().toISOString().slice(0, 16);
+  const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   const lastPoint = trip.route?.at(-1);
-  const [form, setForm] = useState({ title: '', story: '', place: '', visited_at: now, latitude: lastPoint?.latitude ?? '', longitude: lastPoint?.longitude ?? '' });
+  const [form, setForm] = useState({ title: '', story: '', place: '', visited_at: now, latitude: lastPoint?.latitude ?? null, longitude: lastPoint?.longitude ?? null });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [photo, setPhoto] = useState(null);
+  const createdRef = useRef(null);
+  const uploadedRef = useRef(false);
   const update = (key) => (event) => setForm((value) => ({ ...value, [key]: event.target.value }));
   async function submit(event) {
     event.preventDefault(); setSaving(true);
-    try { await onSave({ ...form, visited_at: new Date(form.visited_at).toISOString() }, photo); onClose(); }
+    try { await onSave({ ...form, visited_at: new Date(form.visited_at).toISOString(), latitude: form.latitude ?? undefined, longitude: form.longitude ?? undefined }, photo, createdRef, uploadedRef); onClose(); }
     catch (err) { setError(err.message); setSaving(false); }
   }
   return (
@@ -134,7 +136,7 @@ function MomentForm({ trip, onClose, onSave }) {
         <label>Place<input value={form.place} onChange={update('place')} placeholder="Grindelwald, Switzerland" /></label>
         <label>Your story<textarea value={form.story} onChange={update('story')} placeholder="What happened here?" rows="5" /></label>
         <label>Photo<input className="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={(event) => setPhoto(event.target.files?.[0] || null)} /></label>
-        <label>Date and time<input type="datetime-local" value={form.visited_at} onChange={update('visited_at')} /></label>
+        <label>Date and time<input type="datetime-local" value={form.visited_at} onChange={update('visited_at')} required /></label>
         {error && <div className="form-error">{error}</div>}
         <div className="modal-actions"><button type="button" className="button ghost" onClick={onClose}>Cancel</button><button className="button primary" disabled={saving}><MapPin size={17} /> Save moment</button></div>
       </form>
@@ -180,22 +182,26 @@ function EmptyState({ onCreate }) {
 }
 
 function TripView({ trip, onMoment, onStatus, onShare, busy }) {
-  const [copyLabel, setCopyLabel] = useState('Share');
+  const [copied, setCopied] = useState(false);
+  const moments = useMemo(() => (trip.moments || []).map((moment, index, list) => ({ ...moment, number: list.length - index })), [trip.moments]);
+  async function copyLink(token) {
+    await navigator.clipboard?.writeText(`${window.location.origin}/shared/${token}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
   async function share() {
-    const result = await onShare(!trip.share_token);
-    if (result.share_token) {
-      await navigator.clipboard?.writeText(`${window.location.origin}/shared/${result.share_token}`);
-      setCopyLabel('Link copied');
-      setTimeout(() => setCopyLabel('Sharing on'), 1800);
-    } else setCopyLabel('Share');
+    if (trip.share_token) return copyLink(trip.share_token);
+    const result = await onShare(true);
+    if (result?.share_token) await copyLink(result.share_token);
   }
   return (
     <div className="trip-view">
       <section className="map-hero">
-        <MapView route={trip.route} moments={trip.moments} />
+        <MapView route={trip.route} moments={moments} />
         {!trip.route?.length && <div className="map-empty-note"><Navigation size={19} /><span>Start tracking on iPhone to draw your route</span></div>}
         <div className="map-top-actions">
-          <button className={`map-action ${trip.share_token ? 'active' : ''}`} onClick={share}><Share2 size={17} /> {copyLabel}</button>
+          <button className={`map-action ${trip.share_token ? 'active' : ''}`} onClick={share}><Share2 size={17} /> {copied ? 'Link copied' : trip.share_token ? 'Copy link' : 'Share'}</button>
+          {trip.share_token && <button className="map-action" title="Stop sharing" onClick={() => onShare(false)}><X size={17} /> Stop sharing</button>}
           <a className="map-action" href={`/api/trips/${trip.id}/export.geojson`}><Download size={17} /> GeoJSON</a>
         </div>
         <div className="trip-hero-card">
@@ -214,11 +220,11 @@ function TripView({ trip, onMoment, onStatus, onShare, busy }) {
             <button className="button primary" onClick={onMoment}><Plus size={17} /> Add moment</button>
           </div>
         </div>
-        {trip.moments?.length ? (
+        {moments.length ? (
           <div className="timeline">
-            {trip.moments.map((moment, index) => (
+            {moments.map((moment) => (
               <article className="moment-card" key={moment.id}>
-                <div className="timeline-marker"><span>{trip.moments.length - index}</span></div>
+                <div className="timeline-marker"><span>{moment.number}</span></div>
                 <div className="moment-date">{formatDate(moment.visited_at)}<span>{moment.place || 'Somewhere wonderful'}</span></div>
                 <div className="moment-content">
                   <div className="moment-icon"><MapPin /></div>
@@ -255,6 +261,10 @@ export default function App() {
   const [data, setData] = useState({ trips: [], totals: null });
   const [selectedId, setSelectedId] = useState(null);
   const [trip, setTrip] = useState(null);
+  const [tripError, setTripError] = useState('');
+  const [tripRetry, setTripRetry] = useState(0);
+  const selectedIdRef = useRef(null);
+  selectedIdRef.current = selectedId;
   const [modal, setModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -267,24 +277,27 @@ export default function App() {
 
   useEffect(() => {
     if (sharedToken) return;
-    api.me().then(({ user }) => { setSession({ loading: false, user }); return loadDashboard(); })
+    api.me().then(({ user }) => { setSession({ loading: false, user }); loadDashboard().catch((error) => console.error('Failed to load dashboard', error)); })
       .catch(() => setSession({ loading: false, user: null }));
   }, [loadDashboard, sharedToken]);
 
   useEffect(() => {
     if (!selectedId || !session.user) { setTrip(null); return; }
     let active = true;
-    api.trip(selectedId).then(({ trip: value }) => { if (active) setTrip(value); }).catch(() => { if (active) setTrip(null); });
+    setTripError('');
+    api.trip(selectedId).then(({ trip: value }) => { if (active) setTrip(value); }).catch((error) => { if (active) { setTrip(null); setTripError(error.message); } });
     return () => { active = false; };
-  }, [selectedId, session.user]);
+  }, [selectedId, session.user, tripRetry]);
 
   if (sharedToken) return <PublicTrip token={sharedToken} />;
   if (session.loading) return <div className="center-loader"><LoaderCircle className="spin" /></div>;
-  if (!session.user) return <Login onLogin={async (username, password) => { await api.login(username, password); const { user } = await api.me(); setSession({ loading: false, user }); await loadDashboard(); }} />;
+  if (!session.user) return <Login onLogin={async (username, password) => { const result = await api.login(username, password); if (result?.must_change_password) throw new Error('You must change your password before signing in. Please update it in AuthService first.'); const { user } = await api.me(); setSession({ loading: false, user }); await loadDashboard(); }} />;
 
   async function refreshTrip() {
     if (!selectedId) return;
-    const result = await api.trip(selectedId); setTrip(result.trip); await loadDashboard(selectedId);
+    const result = await api.trip(selectedId);
+    if (selectedIdRef.current !== selectedId) return;
+    setTrip(result.trip); await loadDashboard(selectedId);
   }
 
   return (
@@ -297,8 +310,11 @@ export default function App() {
       <div className="app-body">
         <TripSidebar trips={data.trips} selectedId={selectedId} onSelect={setSelectedId} onCreate={() => setModal('trip')} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="main-content">
-          {!data.trips.length ? <EmptyState onCreate={() => setModal('trip')} /> : !trip ? <div className="center-loader"><LoaderCircle className="spin" /></div> : (
+          {!data.trips.length ? <EmptyState onCreate={() => setModal('trip')} /> : tripError ? (
+            <div className="trip-error"><Route size={42} /><h3>Could not load this trip</h3><p>{tripError}</p><button className="button outline" onClick={() => setTripRetry((count) => count + 1)}>Try again</button></div>
+          ) : !trip ? <div className="center-loader"><LoaderCircle className="spin" /></div> : (
             <TripView
+              key={trip.id}
               trip={trip}
               busy={busy}
               onMoment={() => setModal('moment')}
@@ -309,7 +325,13 @@ export default function App() {
         </main>
       </div>
       {modal === 'trip' && <TripForm onClose={() => setModal(null)} onSave={async (value) => { const result = await api.createTrip(value); await loadDashboard(result.trip.id); }} />}
-      {modal === 'moment' && trip && <MomentForm trip={trip} onClose={() => setModal(null)} onSave={async (value, photo) => { const result = await api.createMoment(trip.id, value); if (photo) await api.uploadPhoto(result.moment.id, photo); await refreshTrip(); }} />}
+      {modal === 'moment' && trip && <MomentForm trip={trip} onClose={() => setModal(null)} onSave={async (value, photo, created, uploaded) => {
+        if (!created.current) created.current = (await api.createMoment(trip.id, value)).moment.id;
+        else await api.updateMoment(created.current, value);
+        try { if (photo && !uploaded.current) { await api.uploadPhoto(created.current, photo); uploaded.current = true; } }
+        catch (error) { await refreshTrip().catch((refreshError) => console.error('Failed to refresh trip after saving moment', refreshError)); throw new Error(`Moment saved, but the photo failed to upload: ${error.message}`); }
+        await refreshTrip().catch((error) => console.error('Failed to refresh trip after saving moment', error));
+      }} />}
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
     </div>
   );

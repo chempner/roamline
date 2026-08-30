@@ -18,9 +18,9 @@ actor OfflinePointStore {
         persist()
     }
 
-    func nextBatch(limit: Int = 200) -> [PendingLocation] {
-        guard let tripId = points.first?.tripId else { return [] }
-        return Array(points.lazy.filter { $0.tripId == tripId }.prefix(limit))
+    func nextBatch(limit: Int = 200, owner: String?) -> [PendingLocation] {
+        guard let tripId = points.first(where: { isFlushable($0, by: owner) })?.tripId else { return [] }
+        return Array(points.lazy.filter { $0.tripId == tripId && self.isFlushable($0, by: owner) }.prefix(limit))
     }
 
     func remove(ids: Set<String>) {
@@ -28,7 +28,18 @@ actor OfflinePointStore {
         persist()
     }
 
+    func removeAll(tripId: String, owner: String?) {
+        points.removeAll { $0.tripId == tripId && isFlushable($0, by: owner) }
+        persist()
+    }
+
     func count() -> Int { points.count }
+
+    // Points queued by older app versions carry no owner and stay flushable by any user;
+    // owned points may only be uploaded or dropped by the account that captured them.
+    private func isFlushable(_ point: PendingLocation, by owner: String?) -> Bool {
+        point.owner == nil || point.owner == owner
+    }
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(points) else { return }

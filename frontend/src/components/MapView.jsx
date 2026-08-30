@@ -42,21 +42,23 @@ export function MapView({ route = [], moments = [], interactive = true, classNam
 
     const coordinates = route.map((point) => [point.latitude, point.longitude]);
     if (coordinates.length > 1) {
+      L.polyline(coordinates, { color: '#fff', weight: 9, opacity: 0.34, lineCap: 'round' }).addTo(layer);
       L.polyline(coordinates, { color: '#e66546', weight: 5, opacity: 0.92, lineCap: 'round', lineJoin: 'round' }).addTo(layer);
-      L.polyline(coordinates, { color: '#fff', weight: 9, opacity: 0.34, lineCap: 'round' }).bringToBack().addTo(layer);
     } else if (coordinates.length === 1) {
       L.circleMarker(coordinates[0], { radius: 7, fillColor: '#e66546', fillOpacity: 1, color: '#fff', weight: 3 }).addTo(layer);
     }
 
-    moments.filter((moment) => moment.latitude != null && moment.longitude != null).forEach((moment, index) => {
+    moments.filter((moment) => moment.latitude != null && moment.longitude != null).forEach((moment) => {
       const icon = L.divIcon({
         className: 'moment-map-icon',
-        html: `<span>${index + 1}</span>`,
+        html: `<span>${moment.number}</span>`,
         iconSize: [34, 34],
         iconAnchor: [17, 17],
       });
+      const label = document.createElement('span');
+      label.textContent = moment.title;
       L.marker([moment.latitude, moment.longitude], { icon })
-        .bindTooltip(moment.title, { direction: 'top', offset: [0, -14] })
+        .bindTooltip(label, { direction: 'top', offset: [0, -14] })
         .addTo(layer);
     });
 

@@ -35,6 +35,15 @@ private let displayDate: DateFormatter = {
     return value
 }()
 
+// Trip start/end dates are stored as UTC midnight of the chosen calendar day, so they are
+// pinned to UTC for display (matching the web app). Moment and point timestamps stay local.
+private let tripDisplayDate: DateFormatter = {
+    let value = DateFormatter()
+    value.dateStyle = .medium
+    value.timeZone = TimeZone(identifier: "UTC")
+    return value
+}()
+
 private func parseISO(_ value: String?) -> Date? {
     guard let value else { return nil }
     let withFraction = ISO8601DateFormatter()
@@ -45,9 +54,9 @@ private func parseISO(_ value: String?) -> Date? {
 private func tripDateText(_ trip: Trip) -> String {
     guard let start = parseISO(trip.startDate) else { return "Dates not set" }
     if let end = parseISO(trip.endDate) {
-        return "\(displayDate.string(from: start)) – \(displayDate.string(from: end))"
+        return "\(tripDisplayDate.string(from: start)) – \(tripDisplayDate.string(from: end))"
     }
-    return displayDate.string(from: start)
+    return tripDisplayDate.string(from: start)
 }
 
 struct RootView: View {
@@ -545,6 +554,8 @@ struct TrackingView: View {
                     }
                     .disabled(!state.isTracking && selectedTrip == nil)
 
+                    BackgroundAccessWarning(tracker: state.locationTracker, isTracking: state.isTracking)
+
                     VStack(alignment: .leading, spacing: 13) {
                         PermissionRow(icon: "location.circle", title: "Location access", value: permissionText(state.locationTracker.authorizationStatus))
                         Divider().overlay(Color.white.opacity(0.09))
@@ -576,6 +587,21 @@ struct TrackingView: View {
         case .denied, .restricted: "Not allowed"
         case .notDetermined: "Not requested"
         @unknown default: "Unknown"
+        }
+    }
+}
+
+struct BackgroundAccessWarning: View {
+    @ObservedObject var tracker: LocationTracker
+    let isTracking: Bool
+
+    var body: some View {
+        if isTracking && !tracker.backgroundCapable {
+            Label("Location access is limited to \"While Using\", so recording stops whenever Roamline goes to the background. Allow Always access in Settings to keep tracking.", systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote).foregroundStyle(Color.roamCoral).lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Color.roamCoral.opacity(0.13), in: RoundedRectangle(cornerRadius: 15))
         }
     }
 }

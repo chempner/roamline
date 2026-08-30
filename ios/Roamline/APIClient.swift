@@ -1,14 +1,15 @@
 import Foundation
 
 enum APIError: LocalizedError {
-    case invalidServer, unauthorized, server(String), invalidResponse
+    case invalidServer, unauthorized, server(status: Int, message: String), invalidResponse, passwordChangeRequired
 
     var errorDescription: String? {
         switch self {
         case .invalidServer: "Enter a valid HTTPS server URL."
         case .unauthorized: "Your session expired. Please sign in again."
-        case .server(let message): message
+        case .server(_, let message): message
         case .invalidResponse: "The server returned an invalid response."
+        case .passwordChangeRequired: "Your password must be changed before signing in. Please update it in AuthService first, then try again."
         }
     }
 }
@@ -26,6 +27,18 @@ actor APIClient {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 30
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        return URLSession(configuration: config)
+    }()
+    // Location sync must fail fast when a flush is parked waiting for connectivity, but the
+    // shared session keeps the default resource timeout so slow-but-progressing transfers
+    // (notably multipart photo uploads) are never cut off mid-flight.
+    private let syncSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 120
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
         return URLSession(configuration: config)
@@ -100,7 +113,7 @@ actor APIClient {
         if http.statusCode == 401 { throw APIError.unauthorized }
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? decoder.decode(ErrorResponse.self, from: responseData).error) ?? "Photo upload failed."
-            throw APIError.server(message)
+            throw APIError.server(status: http.statusCode, message: message)
         }
     }
 
@@ -125,18 +138,18 @@ actor APIClient {
                          altitude: $0.altitude, accuracy: $0.accuracy, speed: $0.speed,
                          course: $0.course, recordedAt: $0.recordedAt)
         })
-        return try await send("/api/trips/\(tripId)/locations", method: "POST", body: body)
+        return try await send("/api/trips/\(tripId)/locations", method: "POST", body: body, session: syncSession)
     }
 
     private func send<Response: Decodable>(_ path: String, method: String = "GET", authenticated: Bool = true) async throws -> Response {
-        try await send(path, method: method, data: nil, authenticated: authenticated)
+        try await send(path, method: method, data: nil, authenticated: authenticated, session: session)
     }
 
-    private func send<Response: Decodable, Body: Encodable>(_ path: String, method: String, body: Body, authenticated: Bool = true) async throws -> Response {
-        try await send(path, method: method, data: encoder.encode(body), authenticated: authenticated)
+    private func send<Response: Decodable, Body: Encodable>(_ path: String, method: String, body: Body, authenticated: Bool = true, session: URLSession? = nil) async throws -> Response {
+        try await send(path, method: method, data: encoder.encode(body), authenticated: authenticated, session: session ?? self.session)
     }
 
-    private func send<Response: Decodable>(_ path: String, method: String, data: Data?, authenticated: Bool) async throws -> Response {
+    private func send<Response: Decodable>(_ path: String, method: String, data: Data?, authenticated: Bool, session: URLSession) async throws -> Response {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { throw APIError.invalidServer }
         components.path = (components.path as NSString).appendingPathComponent(path)
         guard let url = components.url else { throw APIError.invalidServer }
@@ -151,7 +164,7 @@ actor APIClient {
         if http.statusCode == 401 { throw APIError.unauthorized }
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? decoder.decode(ErrorResponse.self, from: responseData).error) ?? "Request failed (\(http.statusCode))."
-            throw APIError.server(message)
+            throw APIError.server(status: http.statusCode, message: message)
         }
         do { return try decoder.decode(Response.self, from: responseData) }
         catch { throw APIError.invalidResponse }

@@ -23,6 +23,7 @@ export const api = {
   updateTrip: (id, trip) => request(`/api/trips/${id}`, { method: 'PATCH', body: JSON.stringify(trip) }),
   deleteTrip: (id) => request(`/api/trips/${id}`, { method: 'DELETE' }),
   createMoment: (tripId, moment) => request(`/api/trips/${tripId}/moments`, { method: 'POST', body: JSON.stringify(moment) }),
+  updateMoment: (momentId, moment) => request(`/api/moments/${momentId}`, { method: 'PATCH', body: JSON.stringify(moment) }),
   uploadPhoto: (momentId, file, caption = '') => {
     const body = new FormData();
     body.append('photo', file);

@@ -93,9 +93,12 @@ struct PendingLocation: Codable, Identifiable, Hashable {
     let speed: Double?
     let course: Double?
     let recordedAt: String
+    // Username of the account that queued the point. Optional so queue files written by
+    // older app versions still decode; nil-owner points remain flushable by any user.
+    let owner: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, latitude, longitude, altitude, accuracy, speed, course
+        case id, latitude, longitude, altitude, accuracy, speed, course, owner
         case tripId = "trip_id"
         case recordedAt = "recorded_at"
     }
@@ -108,13 +111,15 @@ struct PhotoUploadResponse: Codable { let photo: MomentPhoto }
 struct UserResponse: Codable { let user: SessionUser }
 struct LoginResponse: Codable {
     let token: String?
-    let username: String
+    let username: String?
     let displayName: String?
     let isAdmin: Bool?
+    let mustChangePassword: Bool?
     enum CodingKeys: String, CodingKey {
         case token, username
         case displayName = "display_name"
         case isAdmin = "is_admin"
+        case mustChangePassword = "must_change_password"
     }
 }
 struct SyncResponse: Codable { let accepted: Int; let received: Int }

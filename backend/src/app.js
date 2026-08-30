@@ -148,11 +148,11 @@ function createApp(options = {}) {
     if (!current) return res.status(404).json({ error: 'Trip not found' });
     const next = {
       ...current,
-      title: req.body.title === undefined ? current.title : text(req.body.title, 120),
-      summary: req.body.summary === undefined ? current.summary : text(req.body.summary, 2000),
-      start_date: req.body.start_date === undefined ? current.start_date : validDate(req.body.start_date),
-      end_date: req.body.end_date === undefined ? current.end_date : validDate(req.body.end_date),
-      status: ['planned', 'active', 'completed'].includes(req.body.status) ? req.body.status : current.status,
+      title: req.body?.title === undefined ? current.title : text(req.body.title, 120),
+      summary: req.body?.summary === undefined ? current.summary : text(req.body.summary, 2000),
+      start_date: req.body?.start_date === undefined ? current.start_date : validDate(req.body.start_date),
+      end_date: req.body?.end_date === undefined ? current.end_date : validDate(req.body.end_date),
+      status: ['planned', 'active', 'completed'].includes(req.body?.status) ? req.body.status : current.status,
       updated_at: isoNow(),
     };
     if (!next.title) return res.status(400).json({ error: 'Trip title is required' });
@@ -162,15 +162,19 @@ function createApp(options = {}) {
   });
 
   app.delete('/api/trips/:tripId', auth.requireAuth, (req, res) => {
+    const photos = db.prepare('SELECT file_name FROM photos WHERE trip_id = ? AND user_id = ?')
+      .all(req.params.tripId, req.user.sub);
     const result = db.prepare('DELETE FROM trips WHERE id = ? AND user_id = ?').run(req.params.tripId, req.user.sub);
     if (!result.changes) return res.status(404).json({ error: 'Trip not found' });
+    for (const photo of photos) fs.rmSync(path.join(uploadDir, photo.file_name), { force: true });
     res.status(204).end();
   });
 
   app.post('/api/trips/:tripId/locations', auth.requireAuth, (req, res) => {
     const trip = ownedTrip(req.params.tripId, req.user.sub);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
-    const points = Array.isArray(req.body?.points) ? req.body.points.slice(0, 1000) : [];
+    const received = Array.isArray(req.body?.points) ? req.body.points.length : 0;
+    const points = received ? req.body.points.slice(0, 1000) : [];
     if (!points.length) return res.status(400).json({ error: 'At least one location point is required' });
     const insert = db.prepare(`INSERT OR IGNORE INTO location_points
       (id,trip_id,user_id,latitude,longitude,altitude,accuracy,speed,course,recorded_at,created_at)
@@ -184,7 +188,8 @@ function createApp(options = {}) {
         if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
           || !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !recordedAt) continue;
         accepted += insert.run({
-          id: text(point.id, 80) || id(), trip_id: trip.id, user_id: req.user.sub,
+          id: text(typeof point.id === 'number' ? String(point.id) : point.id, 80) || id(),
+          trip_id: trip.id, user_id: req.user.sub,
           latitude, longitude,
           altitude: Number.isFinite(Number(point.altitude)) ? Number(point.altitude) : null,
           accuracy: Number.isFinite(Number(point.accuracy)) ? Number(point.accuracy) : null,
@@ -197,7 +202,7 @@ function createApp(options = {}) {
         .run(isoNow(), trip.status === 'planned' ? 'active' : trip.status, trip.id);
     });
     transaction();
-    res.status(201).json({ accepted, received: points.length });
+    res.status(201).json({ accepted, received });
   });
 
   app.post('/api/trips/:tripId/moments', auth.requireAuth, (req, res) => {
@@ -226,10 +231,10 @@ function createApp(options = {}) {
     if (!current) return res.status(404).json({ error: 'Moment not found' });
     const next = {
       ...current,
-      title: req.body.title === undefined ? current.title : text(req.body.title, 140),
-      story: req.body.story === undefined ? current.story : text(req.body.story, 10_000),
-      place: req.body.place === undefined ? current.place : text(req.body.place, 180),
-      visited_at: req.body.visited_at === undefined ? current.visited_at : validDate(req.body.visited_at, current.visited_at),
+      title: req.body?.title === undefined ? current.title : text(req.body.title, 140),
+      story: req.body?.story === undefined ? current.story : text(req.body.story, 10_000),
+      place: req.body?.place === undefined ? current.place : text(req.body.place, 180),
+      visited_at: req.body?.visited_at === undefined ? current.visited_at : validDate(req.body.visited_at, current.visited_at),
       updated_at: isoNow(),
     };
     if (!next.title) return res.status(400).json({ error: 'Moment title is required' });
@@ -239,8 +244,11 @@ function createApp(options = {}) {
   });
 
   app.delete('/api/moments/:momentId', auth.requireAuth, (req, res) => {
+    const photos = db.prepare('SELECT file_name FROM photos WHERE moment_id = ? AND user_id = ?')
+      .all(req.params.momentId, req.user.sub);
     const result = db.prepare('DELETE FROM moments WHERE id = ? AND user_id = ?').run(req.params.momentId, req.user.sub);
     if (!result.changes) return res.status(404).json({ error: 'Moment not found' });
+    for (const photo of photos) fs.rmSync(path.join(uploadDir, photo.file_name), { force: true });
     res.status(204).end();
   });
 
@@ -285,7 +293,8 @@ function createApp(options = {}) {
     const points = db.prepare('SELECT * FROM location_points WHERE trip_id = ? ORDER BY recorded_at').all(trip.id);
     const moments = db.prepare('SELECT * FROM moments WHERE trip_id = ? ORDER BY visited_at').all(trip.id);
     const features = [];
-    if (points.length) features.push({
+    // RFC 7946 requires a LineString to have at least two positions.
+    if (points.length >= 2) features.push({
       type: 'Feature', properties: { name: trip.title, timestamps: points.map((p) => p.recorded_at) },
       geometry: { type: 'LineString', coordinates: points.map((p) => [p.longitude, p.latitude, p.altitude].filter((v) => v != null)) },
     });
@@ -303,6 +312,7 @@ function createApp(options = {}) {
     const safeTrip = serializeTrip(trip, true, req.params.shareToken);
     delete safeTrip.user_id;
     delete safeTrip.share_token;
+    safeTrip.moments = safeTrip.moments.map(({ user_id, ...moment }) => moment);
     res.json({ trip: safeTrip });
   });
 

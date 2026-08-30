@@ -85,6 +85,15 @@ test('trip lifecycle, idempotent location sync, and user isolation', async () =>
 
   const forbidden = await request(`/api/trips/${tripId}`, {}, 'bob');
   assert.equal(forbidden.response.status, 404);
+
+  // The same client-supplied point ids must not collide with another trip.
+  const otherTrip = await request('/api/trips', {
+    method: 'POST', body: JSON.stringify({ title: 'Second Loop' }),
+  });
+  const otherSync = await request(`/api/trips/${otherTrip.body.trip.id}/locations`, {
+    method: 'POST', body: JSON.stringify({ points }),
+  });
+  assert.equal(otherSync.body.accepted, 2);
 });
 
 test('moments, public sharing, and GeoJSON export work', async () => {
@@ -119,6 +128,9 @@ test('moments, public sharing, and GeoJSON export work', async () => {
   assert.equal(publicTrip.body.trip.moments[0].title, 'Morning in town');
   assert.equal(publicTrip.body.trip.moments[0].photos.length, 1);
   assert.equal(publicTrip.body.trip.user_id, undefined);
+  for (const publicMoment of publicTrip.body.trip.moments) {
+    assert.equal(publicMoment.user_id, undefined);
+  }
 
   const publicPhoto = await fetch(`${baseUrl}${publicTrip.body.trip.moments[0].photos[0].url}`);
   assert.equal(publicPhoto.status, 200);
